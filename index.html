@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+  <head>
+    <script src='https://code.jquery.com/jquery-2.1.4.js'></script>
+    <script src='/socket.io/socket.io.js'></script>
+    <script src='http://momentjs.com/downloads/moment.js'></script>
+    <script src='node_modules/foundation/js/foundation/foundation.js'></script>
+    <link rel="stylesheet" href="css/foundation.css">
+    <link rel="stylesheet" href="css/style.css">
+    <script>
+  window.onload = function(){
+    var el = document.getElementById('message-field');
+    el.addEventListener('keydown', function(e){
+      if (e.keyCode == 13) {
+        sendMessage();
+      }
+    });
+  }
+  </script>
+  </head>
+  <body>
+    <div class="row">
+      <div class="large-4 columns">
+        <h1>ch@</h1>
+      </div>
+      <div style="margin-top:20px;">
+        <div class="large-1 columns">
+          <label for="right-label" class="right inline">User:</label>
+        </div>
+        <div class="large-2 columns">
+          <input type="text" id="right-label">
+        </div>
+        <div class="large-1 columns">
+          <label for="right-label" class="right inline">Pass:</label>
+        </div>
+        <div class="large-2 columns">
+          <input type="password" id="right-label">
+        </div>
+        <div class="large-2 columns">
+          <a href="#" class="button small" onclick="login();">Log in</a>
+          <p><a href="#">Register</a></p>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="large-12 columns">
+        <div id="message-list" class="panel" style="height:200px;">
+          <ul id='messages'></ul>  
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="large-10 columns">
+        <input type="text" autocomplete="off" id="message-field">
+      </div>
+      <div class="large-2 columns">
+        <a href="#" class="button small" onclick="sendMessage();">Send</a>
+      </div>
+    </div>
+    <script src='js/socket.js'></script>
+  </body>
+</html>
