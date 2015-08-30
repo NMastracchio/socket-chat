@@ -1,17 +1,49 @@
-var http = require('http');
-var url = require('url');
-var path = require('path');
-var fs = require('fs');
-var chalk = require('chalk');
-var bcrypt = require('bcryptjs');
-var index = fs.readFileSync(__dirname + '/index.html');
+var bcrypt        = require('bcryptjs');
+var bodyParser    = require('body-parser');
+var chalk         = require('chalk');
+var express       = require('express');
+var fs            = require('fs');
+var http          = require('http');
+var mongolabs     = require('./mongolabs');
+var mongoose      = require('mongoose');
+var passport      = require('passport');
+var LocalStrategy = require('passport-local').Strategy;
+var path          = require('path');
+var url           = require('url');
 
-// Send index.html to all requests
-var app = http.createServer(function(req, res) {
+/* Express configuration */
+var app = require('express')();
+app.use(express.static('./'));
+app.use(bodyParser.urlencoded({
+  extended: true
+})); 
 
-  var uri = url.parse(req.url).pathname, 
-      filename = path.join(process.cwd(), uri);
-  
+/* Mongoose schema and model definitions */
+var userSchema = mongoose.Schema({
+  name: String,
+  pass: String
+});
+var User = mongoose.model('User', userSchema);
+
+passport.use(new LocalStrategy(
+  function(username, password, callback){
+
+  }
+));
+
+/* Configure socket.io */
+var server = require('http').Server(app);
+var io = require('socket.io')(server);
+
+/* Set the server to listen */
+var portNum = 3000;
+server.listen(portNum, function(){
+  console.log('Server listening on port ' + portNum);
+});
+
+/* Home GET request */
+app.get('/', function(req, res){
+
   fs.exists(filename, function(exists) {
     if(!exists) {
       res.writeHead(404, {"Content-Type": "text/plain"});
@@ -23,37 +55,20 @@ var app = http.createServer(function(req, res) {
       filename += '/index.html';
     }
 
+    /* Get the cookies from the requiest */
     var cookies = parseCookies(req);
-    console.log(cookies);
-    if(!cookies['chatId']){ // If the cookie does not exist
-      var userId = 'user' // Create id for user
+    /* If the user does not already have a chatId cookie */
+    if(!cookies['chatId']){ 
+      var userId = 'user' /* Generate a userId */
         + (new Date().getTime()) + '-' 
         + (Math.round(Math.random() * 10)) 
-      var expireTime = '; expires=' 
-        + new Date(new Date().getTime()+86409000).toUTCString();
+      var expireTime = '; expires=' /* Create a cookie expiration of 24 hours */
+        + new Date(new Date().getTime()+24*60*60*1000).toUTCString();
 
-      res.writeHead(200, { // Set the chatId cookie
+      /* Give the cookie to that user */
+      res.writeHead(200, {
         'Content-Type': 'text/html',
         'Set-Cookie': 'chatId=' + userId + expireTime
-      });
-
-      /* Read the user info file */
-      fs.readFile('./users/user_info.json', function(err, data){
-        if (err) throw err;
-        console.log(data);
-        var fileData = JSON.parse(data);
-        if (!fileData.hasOwnProperty(userId)){ // Add user if they do not exist 
-          fileData[userId] = {
-            username: null // This will be defined by the user
-          };
-          fs.open('./users/user_info.json','w',function(err, file){ // Open for writing
-            if (err) throw err;
-            fs.write(file, JSON.stringify(fileData), function(err, data){ // Write to file
-              if (err) throw err;
-              console.log(chalk.yellow('Added ' + userId + ' to records'));
-            });
-          });
-        }
       });
     }
 
@@ -65,83 +80,101 @@ var app = http.createServer(function(req, res) {
         return;
       }
 
-      //res.writeHead(200);
       res.write(file, "binary");
       res.end();
     });
-
-  /*fs.readFile(__dirname + req.url, function(err, data){
-    console.log(__dirname + req.url);
-    if (err) {
-      res.writeHead(404);
-      res.end(JSON.stringify(err));
-      return;
-    }
-    res.writeHead(200);
-    var cookies = parseCookies(req);
-    if(!cookies['chatId']){ // If the cookie does not exist
-      var userId = 'user' // Create id for user
-        + (new Date().getTime()) + '-' 
-        + (Math.round(Math.random() * 10)) 
-      var expireTime = '; expires=' 
-        + new Date(new Date().getTime()+86409000).toUTCString();
-
-      res.writeHead(200, { // Set the chatId cookie
-        'Content-Type': 'text/html',
-        'Set-Cookie': 'chatId=' + userId + expireTime
-      });
-
-      /* Read the user info file */
-      /*fs.readFile('./users/user_info.json', function(err, data){
-        if (err) throw err;
-        var fileData = JSON.parse(data);
-        //if (!fileData.hasOwnProperty(userId)){ // Add user if they do not exist 
-          fileData[userId] = {
-            username: null // This will be defined by the user
-          };
-          fs.open('./users/user_info.json','w',function(err, file){ // Open for writing
-            if (err) throw err;
-            fs.write(file, JSON.stringify(fileData), function(err, data){ // Write to file
-              if (err) throw err;
-              console.log(chalk.yellow('Added ' + userId + ' to records'));
-            });
-          });
-        //}
-      });
-    }
-    res.end(index);*/
   });
-  //res.end(index);
 });
 
-// Socket.io server listens to our app
-var io = require('socket.io').listen(app);
+app.post('/register', function(req, res){
+  var params = req.body;
+  var username = params['register-user'];
+  var pass = params['register-pass'];
 
-// Emit welcome message on connection
+  bcrypt.genSalt(10, function(err, salt) {
+    bcrypt.hash(pass, salt, function(err, hash) {
+      if (err){
+        throw err;
+      } 
+      console.log('Username: ', params['register-user']);
+      console.log('Hashed password: ', typeof(hash));
+      mongolabs.openConnection(function(err, db){
+        if (err) {
+          throw err;
+        }
+        /* Check to see if the username is taken */
+        User.find({ name: username }, function(err, docs) {
+          if (!docs.length){
+            var newUser = new User({ 
+              name: username,
+              pass: hash
+            });
+            newUser.save(function (err, newUser) {
+              if (err) return console.error(err);
+              res.send('User created!');
+              db.close(function(err,data){
+                if (err) {
+                  throw err;
+                }
+                console.log('db disconnected');
+              });
+            });
+          } else {                
+            res.send('Username taken.');
+            db.close(function(err,data){
+              if (err) {
+                throw err;
+              }
+              console.log('db disconnected');
+            });
+          }
+        });
+        
+      });
+    });
+  });
+});
+
+/* Passport authentication */
+app.post('/login', function(req, res){
+  passport.authenticate('local', function(req, res){
+    console.log('test');
+  });
+});
+
+/* On 'connection'... */
 io.on('connection', function(socket) {
-  // Use socket to communicate with this particular client only, sending it it's own id
+  /* ...emit 'welcome' */
   socket.emit('welcome', { message: 'Welcome!', id: socket.id });
-  socket.on('i am client', console.log);
 
+  /* On 'login', create salt and hash */
   socket.on('login', function(data){
     var salt = bcrypt.genSaltSync(10);
     var hash = bcrypt.hashSync("B4c0/\/", salt);
-    console.log(hash); 
+
+    /* some function to handle the login goes here */
+    socket.emit('login error',{
+      err:err
+    });
+    /* Emit 'login successful' */
+    socket.emit('login successful', {
+
+    });
   });
 
+  /* On 'message sent', emit 'message received' */
   socket.on('message sent', function(data){
-    console.log(data);
     io.emit('message received', {
-      message: data.message
+      message: data.message,
+      time: new Date().getTime()
     });
+
+
+    /* I don't think I'll need this vvv
     io.emit('message delivered', { 
       time: new Date().getTime() 
-    });
+    });*/
   });
-});
-
-app.listen(3000,function(){
-  console.log('App listening on localhost:3000');
 });
 
 /**** Helper functions ***/
