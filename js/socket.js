@@ -24,6 +24,10 @@ var socket = io();
     latest.innerHTML = baseText += " (Sent at " + time + ")";
   });
 
+  socket.on('user not found', function(data){
+    console.log(data);
+  });
+
   function addMessage(message) {
     var text = document.createTextNode(message);
     var messageField = document.getElementById('message-list');

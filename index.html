@@ -25,20 +25,24 @@
         <h1>ch@</h1>
       </div>
       <div style="margin-top:20px;">
+      <form action="login" method="post">
         <div class="large-1 columns">
           <label for="right-label" class="right inline">User:</label>
         </div>
         <div class="large-2 columns">
-          <input type="text" id="right-label">
+          <input type="text" name="login-user">
         </div>
         <div class="large-1 columns">
           <label for="right-label" class="right inline">Pass:</label>
         </div>
         <div class="large-2 columns">
-          <input type="password" id="right-label">
+          <input type="password" name="login-pass">
         </div>
         <div class="large-2 columns">
-          <a href="#" class="button small" onclick="login();">Log in</a>
+          <input class="button" type="submit" value="Log In">
+        </div>
+      </form>
+        <div class="large-2 columns">
           <p>
             <a href="#" data-reveal-id="myModal">Register</a>
             <div id="myModal" class="reveal-modal" data-reveal>

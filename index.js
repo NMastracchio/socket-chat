@@ -1,13 +1,16 @@
 var bcrypt        = require('bcryptjs');
 var bodyParser    = require('body-parser');
 var chalk         = require('chalk');
+var cookieParser  = require('cookie-parser');
 var express       = require('express');
+var flash         = require('connect-flash');
 var fs            = require('fs');
 var http          = require('http');
 var mongolabs     = require('./mongolabs');
 var mongoose      = require('mongoose');
 var passport      = require('passport');
-var LocalStrategy = require('passport-local').Strategy;
+var session       = require('express-session');
+var Strategy      = require('passport-local').Strategy;
 var path          = require('path');
 var url           = require('url');
 
@@ -17,6 +20,11 @@ app.use(express.static('./'));
 app.use(bodyParser.urlencoded({
   extended: true
 })); 
+app.use(cookieParser('keyboard cat'));
+app.use(session({ cookie: { maxAge: 60000 }}));
+app.use(flash());
+app.use(passport.initialize());
+app.use(passport.session());
 
 /* Mongoose schema and model definitions */
 var userSchema = mongoose.Schema({
@@ -25,11 +33,50 @@ var userSchema = mongoose.Schema({
 });
 var User = mongoose.model('User', userSchema);
 
-passport.use(new LocalStrategy(
-  function(username, password, callback){
-
+/* Configure passport strategy */
+passport.use(new Strategy({
+    usernameField: 'login-user',
+    passwordField: 'login-pass'
+  },
+  function(username, password, callback) {
+    mongolabs.openConnection(function(err, db){
+      mongolabs.closeConnection(db, function(err, data){
+        if (err) {
+          throw err;
+        }
+      });
+      if (err) {
+        throw err;
+      }
+      User.findOne({ name: username }, function (err, user) {
+        if (err) { 
+          return callback(err); 
+        }
+        if (!user) {
+          return callback(null, false, { message: 'Incorrect username.' });
+        }
+        if (user) {
+          var loginSuccessful = bcrypt.compareSync(password, user['pass']);
+          if (!loginSuccessful){
+            return callback(null, false, { message: 'Incorrect password.' });
+          }
+        }
+        return callback(null, user);
+      });
+    });
   }
 ));
+
+passport.serializeUser(function(user, cb) {
+  cb(null, user.id);
+});
+
+passport.deserializeUser(function(id, cb) {
+  db.users.findById(id, function (err, user) {
+    if (err) { return cb(err); }
+    cb(null, user);
+  });
+});
 
 /* Configure socket.io */
 var server = require('http').Server(app);
@@ -96,51 +143,60 @@ app.post('/register', function(req, res){
       if (err){
         throw err;
       } 
-      console.log('Username: ', params['register-user']);
-      console.log('Hashed password: ', typeof(hash));
+
       mongolabs.openConnection(function(err, db){
         if (err) {
           throw err;
         }
         /* Check to see if the username is taken */
         User.find({ name: username }, function(err, docs) {
+          
+          /* Username free, create new account */
           if (!docs.length){
             var newUser = new User({ 
               name: username,
               pass: hash
             });
+
+            /* Save the user to the db */
             newUser.save(function (err, newUser) {
-              if (err) return console.error(err);
+              if (err) {
+                return console.error(err);
+              }
+
               res.send('User created!');
+              
+              /* Close the mongo connection */
               db.close(function(err,data){
                 if (err) {
                   throw err;
                 }
-                console.log('db disconnected');
               });
             });
           } else {                
             res.send('Username taken.');
+
+            /* Close the mongo connection */
             db.close(function(err,data){
               if (err) {
                 throw err;
               }
-              console.log('db disconnected');
             });
           }
         });
-        
       });
     });
   });
 });
 
 /* Passport authentication */
-app.post('/login', function(req, res){
-  passport.authenticate('local', function(req, res){
-    console.log('test');
+app.post('/login', passport.authenticate('local', { 
+    failureRedirect: '/',
+    failureFlash: true,
+    successFlash: 'Authentication successful!'    
+  }), function(req, res) {
+    res.redirect('/');
   });
-});
 
 /* On 'connection'... */
 io.on('connection', function(socket) {
@@ -169,15 +225,23 @@ io.on('connection', function(socket) {
       time: new Date().getTime()
     });
 
-
-    /* I don't think I'll need this vvv
-    io.emit('message delivered', { 
-      time: new Date().getTime() 
-    });*/
   });
 });
 
 /**** Helper functions ***/
+
+function closeDatabase(){
+  /* Close the mongo connection */
+  db.close(function(err,data){
+    if (err) {
+      throw err;
+    }
+  });
+}
+
+function validatePassword(){
+
+}
 
 function parseCookies (request) {
   var list = {};
